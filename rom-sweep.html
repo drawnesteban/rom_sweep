@@ -1,0 +1,965 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ROM Sweep</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&family=Silkscreen&display=swap" rel="stylesheet">
+<style>
+:root{
+  color-scheme: light;
+  --bg:#E4E1DA; --panel:#F3F1EC; --sunk:#D9D5CC; --ink:#1F2433; --muted:#5D6170; --faint:#8A8D98;
+  --line:rgba(31,36,51,.16); --line-strong:rgba(31,36,51,.32);
+  --accent:#8E2A5A; --accent-ink:#FFFFFF; --accent-soft:#F1DCE6;
+  --ok:#2F6B3F; --ok-bg:#D8E9DA; --warn:#7A5000; --warn-bg:#F3E3BE; --bad:#A12D2D; --bad-bg:#F2D7D3;
+  --font:"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --pixel:"Silkscreen", "IBM Plex Mono", ui-monospace, monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    color-scheme: dark;
+    --bg:#1B1D24; --panel:#252832; --sunk:#30333E; --ink:#ECEAE4; --muted:#A6A9B5; --faint:#7C7F8A;
+    --line:rgba(236,234,228,.13); --line-strong:rgba(236,234,228,.28);
+    --accent:#E58AB3; --accent-ink:#1B1D24; --accent-soft:#3D2632;
+    --ok:#94D3A2; --ok-bg:#22372A; --warn:#F0C66E; --warn-bg:#3A2F16; --bad:#F29C93; --bad-bg:#432424;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.5}
+main{max-width:980px;margin:0 auto;padding:28px 20px 80px}
+h1{font-family:var(--pixel);font-weight:400;font-size:clamp(34px,6vw,54px);letter-spacing:.02em;line-height:1;margin:0}
+h2{font-size:18px;font-weight:600;margin:0}
+p{margin:0}
+button{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;padding:7px 13px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover{background:var(--sunk)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button.primary:hover{filter:brightness(1.08)}
+button.danger{color:var(--bad);border-color:var(--bad)}
+button.ghost{background:transparent;border-color:transparent;padding:4px 6px}
+button[disabled]{opacity:.5;cursor:not-allowed}
+input[type=text]{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:5px 8px;width:100%}
+input[type=checkbox],input[type=radio]{accent-color:var(--accent);width:16px;height:16px;margin:0}
+code,.mono{font-family:var(--mono);font-size:13px}
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
+.tag{color:var(--muted);margin-top:8px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-top:18px}
+.src{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.src .path{flex:1;min-width:0;font-family:var(--mono);font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.note{font-size:13px;color:var(--muted);margin-top:8px}
+.note button{font-size:13px;padding:2px 8px}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-top:18px}
+.stat{background:var(--panel);padding:14px 16px}
+.stat b{display:block;font-family:var(--pixel);font-weight:400;font-size:28px;line-height:1.1}
+.stat span{font-size:13px;color:var(--muted)}
+.filters{display:flex;gap:6px;flex-wrap:wrap;margin:18px 0 10px}
+.filters button{font-size:13px;padding:5px 12px;border-radius:999px}
+.filters button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.list{background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.row{display:grid;grid-template-columns:28px minmax(0,1fr) 130px 90px 90px;align-items:center;gap:10px;padding:8px 14px;border-top:1px solid var(--line)}
+.row.head{border-top:none;font-size:12px;color:var(--faint);padding-top:10px;padding-bottom:6px}
+.row .nm{justify-self:start;background:none;border:none;padding:2px 0;font-size:15px;font-weight:500;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .nm:hover{background:none;color:var(--accent)}
+.num{text-align:right;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pill{justify-self:start;font-size:12px;padding:2px 10px;border-radius:999px;white-space:nowrap}
+.has{background:var(--ok-bg);color:var(--ok)} .empty{background:var(--bad-bg);color:var(--bad)} .img{background:var(--warn-bg);color:var(--warn)}
+.files{padding:4px 14px 12px 52px;border-top:1px solid var(--line);font-size:13px;background:var(--bg)}
+.files div{display:flex;justify-content:space-between;gap:12px;padding:3px 0;color:var(--muted)}
+.files div span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kind{font-size:11px;color:var(--faint);margin-left:6px}
+.bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;padding:10px 14px;background:var(--sunk);border-radius:10px}
+.bar .count{flex:1;font-size:14px}
+.empty-state{text-align:center;padding:48px 20px;color:var(--muted)}
+.map{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr) 90px;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--line);font-size:14px}
+.map.head{border-top:none;font-size:12px;color:var(--faint)}
+.opts{display:flex;flex-direction:column;gap:8px;margin:14px 0}
+.opts label,.grid-opts label{display:flex;align-items:center;gap:8px;font-size:14px}
+.grid-opts{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:8px 18px;margin:12px 0 16px}
+.progress{height:8px;background:var(--sunk);border-radius:999px;overflow:hidden;margin-top:12px}
+.progress div{height:100%;width:0;background:var(--accent);transition:width .15s}
+.prog-text{display:flex;justify-content:space-between;font-size:13px;color:var(--muted);margin-top:6px}
+.sub-h{font-size:13px;color:var(--muted);margin:14px 0 6px}
+.frow{display:grid;grid-template-columns:28px minmax(0,1fr) 140px;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line);font-size:14px}
+.scopes{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.scope{display:block;text-align:left;padding:10px 12px}
+.scope small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.scope.on{border:2px solid var(--accent);padding:9px 11px}
+.rn{display:grid;grid-template-columns:28px minmax(0,1fr) 18px minmax(0,1fr);gap:8px;padding:7px 0;border-top:1px solid var(--line);font-size:13px;align-items:start}
+.rn .old{color:var(--muted);text-decoration:line-through;word-break:break-word}
+.rn .new{word-break:break-word}
+.rn .meta{grid-column:4;font-size:12px;color:var(--faint);margin-top:-3px}
+.rn .meta.w{color:var(--warn)} .rn .meta.b{color:var(--bad)}
+.preview{max-height:420px;overflow:auto;margin-top:6px;border-bottom:1px solid var(--line)}
+.actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;margin-top:14px}
+.callout{font-size:13px;color:var(--muted);background:var(--bg);border-radius:8px;padding:10px 12px;margin-top:12px}
+.banner{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:14px 16px;margin-bottom:18px}
+.toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;max-width:min(90vw,560px);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.show{opacity:1}
+select{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line-strong);border-radius:6px;padding:4px 8px;margin-left:4px}
+.dg{border:1px solid var(--line);border-radius:8px;margin-top:10px;overflow:hidden}
+.dgh{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:var(--bg);font-size:14px;font-weight:500}
+.dgr{display:grid;grid-template-columns:24px minmax(0,1fr) 76px 70px;gap:8px;align-items:center;padding:7px 12px;border-top:1px solid var(--line);font-size:13px;cursor:pointer}
+.dgr .fn{word-break:break-word}
+.dgr.extra .fn{color:var(--muted)}
+.dgr .loc{color:var(--faint)}
+.pill.mix{background:var(--accent-soft);color:var(--accent)}
+.hidden{display:none !important}
+.err{font-size:13px;color:var(--bad);margin-top:8px;white-space:pre-wrap}
+@media (max-width:640px){
+  .row{grid-template-columns:24px minmax(0,1fr) 92px 60px;}
+  .row > :nth-child(5){display:none}
+  .map{grid-template-columns:minmax(0,1fr) 16px minmax(0,1fr)}
+  .map > :nth-child(4){display:none}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <div>
+      <h1>ROM Sweep</h1>
+      <p class="tag">Scan a ROM folder or SD card, clear out empty systems, build a master library, and clean up names.</p>
+    </div>
+    <button class="primary" id="pickBtn">Choose folder</button>
+  </div>
+
+  <div class="banner hidden" id="unsupported">This browser can't open folders. Open this file in Chrome or Edge, on macOS or Windows.</div>
+
+  <section id="startState" class="panel empty-state">
+    <p>Pick your <code>Roms</code> folder or the root of an SD card. If there's a <code>roms</code> folder inside, it's used automatically.</p>
+    <p class="note">The browser asks for edit access so the tool can delete, copy, and rename. Nothing changes until you press a button.</p>
+  </section>
+
+  <section id="scanned" class="hidden">
+    <div class="panel">
+      <div class="src">
+        <span class="path" id="srcPath"></span>
+        <button id="rescanBtn">Rescan</button>
+      </div>
+      <div class="note" id="srcNote"></div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="stTotal">0</b><span>System folders</span></div>
+      <div class="stat"><b id="stHas">0</b><span>With ROMs</span></div>
+      <div class="stat"><b id="stEmpty">0</b><span>Empty</span></div>
+      <div class="stat"><b id="stImg">0</b><span>Images or extras only</span></div>
+    </div>
+
+    <div class="filters" id="filters">
+      <button data-f="all" class="on">All</button>
+      <button data-f="has">With ROMs</button>
+      <button data-f="empty">Empty</button>
+      <button data-f="img">Images or extras only</button>
+    </div>
+
+    <div class="list" id="list"></div>
+
+    <div class="bar">
+      <span class="count" id="selCount">0 folders selected</span>
+      <button id="exportBtn">Export list</button>
+      <button id="openCopyBtn">Copy to master folder</button>
+      <button class="danger" id="deleteBtn">Delete selected</button>
+    </div>
+
+    <!-- Copy panel -->
+    <div class="panel hidden" id="copyPanel">
+      <div class="src">
+        <h2 style="flex:1">Copy to master folder</h2>
+        <button id="destBtn">Choose destination</button>
+      </div>
+      <p class="note mono" id="destName">No destination chosen yet. Pick your master <code>roms</code> folder.</p>
+      <div id="mapRows"></div>
+      <div class="opts">
+        <label><input type="checkbox" id="optSkip" checked> Skip files already in master (same name and size)</label>
+        <label><input type="checkbox" id="optMedia"> Include images and box art folders</label>
+        <label><input type="checkbox" id="optCleanCopy"> Clean names while copying (uses the rename settings below)</label>
+      </div>
+      <div class="actions"><button class="primary" id="copyBtn">Start copy</button></div>
+      <div class="progress hidden" id="copyProg"><div></div></div>
+      <div class="prog-text hidden" id="copyText"><span></span><span></span></div>
+      <div class="err" id="copyErr"></div>
+    </div>
+
+    <!-- Rename panel -->
+    <div class="panel" id="renamePanel">
+      <div class="src">
+        <h2 style="flex:1">Clean up ROM names</h2>
+        <span class="note" id="renSummary" style="margin:0"></span>
+      </div>
+      <div class="grid-opts">
+        <label><input type="checkbox" data-o="lead" checked> Leading numbers <code>0123 - </code> <code>12. </code></label>
+        <label><input type="checkbox" data-o="hash" checked> Numbered prefixes <code>#12 </code></label>
+        <label><input type="checkbox" data-o="under"> Underscores to spaces</label>
+        <label><input type="checkbox" data-o="tags"> Remove region and version tags (keeps disc numbers)</label>
+      </div>
+
+      <div class="src">
+        <span class="note" style="flex:1;margin:0" id="savesNote">Saves stored outside this folder won't be renamed unless you add their folder.</span>
+        <button id="savesBtn">Add saves folder</button>
+      </div>
+
+      <p class="sub-h">Folders to rename</p>
+      <div id="renFolders"></div>
+
+      <p class="sub-h">Apply renames to</p>
+      <div class="scopes" id="scopes">
+        <button class="scope" data-s="card">This folder or card<small>Edits files in place</small></button>
+        <button class="scope on" data-s="master">Master copy<small>Source stays untouched</small></button>
+        <button class="scope" data-s="both">Both<small>Source and master match</small></button>
+      </div>
+      <p class="callout" id="scopeNote"></p>
+
+      <p class="sub-h">Preview</p>
+      <div class="preview" id="renList"></div>
+
+      <div class="actions">
+        <button id="restoreBtn">Restore from log</button>
+        <button id="logBtn" disabled>Export rename log</button>
+        <button class="primary" id="renameBtn">Rename on copy</button>
+      </div>
+      <div class="err" id="renErr"></div>
+      <input type="file" id="logFile" accept=".json,application/json" class="hidden">
+    </div>
+
+    <!-- Duplicates panel -->
+    <div class="panel" id="dupPanel">
+      <div class="src">
+        <h2 style="flex:1">Find duplicates</h2>
+        <span class="note" id="dupSummary" style="margin:0"></span>
+      </div>
+      <div class="grid-opts">
+        <label><input type="checkbox" id="dupExact" checked> Exact copies (same file content)</label>
+        <label><input type="checkbox" id="dupSame" checked> Same game, different version or region</label>
+        <label><input type="radio" name="dupScope" value="src" checked> Within this folder</label>
+        <label><input type="radio" name="dupScope" value="master"> Also compare with master folder</label>
+        <label>Preferred region
+          <select id="dupRegion">
+            <option value="usa">USA</option>
+            <option value="europe">Europe</option>
+            <option value="japan">Japan</option>
+            <option value="world">World</option>
+            <option value="spain">Spain or Spanish</option>
+          </select>
+        </label>
+      </div>
+      <div class="src">
+        <span class="note" style="flex:1;margin:0" id="dupMasterNote">Master comparison is read-only. Files are only ever removed from the scanned folder.</span>
+        <button id="dupMasterBtn">Choose master folder</button>
+      </div>
+      <div class="actions"><button class="primary" id="dupScanBtn">Scan for duplicates</button></div>
+      <div class="progress hidden" id="dupProg"><div></div></div>
+      <div class="prog-text hidden" id="dupText"><span></span><span></span></div>
+      <div id="dupList"></div>
+      <div class="bar hidden" id="dupBar">
+        <span class="count" id="dupNote"></span>
+        <button id="dupExport">Export report</button>
+        <button class="primary" id="dupMove">Move extras to _duplicates</button>
+        <button class="danger" id="dupDelete">Delete extras</button>
+      </div>
+      <div class="err" id="dupErr"></div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = b => { if (!b) return '0 KB'; const u=['B','KB','MB','GB','TB']; let i=Math.min(Math.floor(Math.log(b)/Math.log(1024)),4); const v=b/Math.pow(1024,i); return (i<2?Math.round(v):v.toFixed(v<10?1:0))+' '+u[i]; };
+let toastT; const toast = m => { const t=$('#toast'); t.textContent=m; t.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),4200); };
+
+const JUNK = n => n.startsWith('.') || /^(thumbs\.db|desktop\.ini)$/i.test(n);
+const MEDIA_DIR = /^(imgs?|images?|media|box ?arts?|boxarts?|covers?|snaps?|screenshots?|manuals?|videos?|thumbnails?|marquees?|wheels?|titles?|downloaded_images|miximages?)$/i;
+const MEDIA_EXT = /\.(png|jpe?g|gif|bmp|webp|svg|mp4|mkv|pdf|txt|xml|json|cfg|ini|db|dat|nfo|md|html?)$/i;
+const SAVE_EXT = /\.(srm|sav|rtc|mcr|mcd|eep|fla|sra|dsv|state\d*|st\d|auto|oops)$/i;
+const DISC_SET = /\.(cue|bin|img|sub|ccd|gdi|m3u|toc)$/i;
+const ALIAS = {sfc:'snes',snes:'snes',fc:'nes',nes:'nes',famicom:'nes',md:'megadrive',gen:'megadrive',genesis:'megadrive',megadrive:'megadrive',
+  ps:'psx',psx:'psx',ps1:'psx',playstation:'psx',gg:'gamegear',gamegear:'gamegear',ms:'mastersystem',sms:'mastersystem',mastersystem:'mastersystem',
+  pce:'pcengine',tg16:'pcengine',pcengine:'pcengine',vb:'virtualboy',virtualboy:'virtualboy',atari:'atari2600',a26:'atari2600',atari2600:'atari2600',
+  dc:'dreamcast',dreamcast:'dreamcast','32x':'sega32x',sega32x:'sega32x',segacd:'segacd',mcd:'segacd',poke:'pokemini',pokemini:'pokemini',
+  ws:'wonderswan',wsc:'wonderswancolor',ngp:'ngp',ngpc:'ngpc',fbneo:'fbneo',fba:'fbneo',mame:'mame',arcade:'arcade',cps1:'cps1',cps2:'cps2',cps3:'cps3',
+  gb:'gb',gbc:'gbc',gba:'gba',n64:'n64',nds:'nds',psp:'psp',lynx:'lynx',coleco:'colecovision',msx:'msx',pico:'pico8',pico8:'pico8'};
+
+const state = { root:null, scanRoot:null, usingSub:false, systems:[], filter:'all', dest:null, scope:'master',
+  opts:{lead:true,hash:true,under:false,tags:false}, savesRoot:null, savesFiles:[], plan:[], lastLog:null, busy:false };
+
+if (!('showDirectoryPicker' in window)) { $('#unsupported').classList.remove('hidden'); $('#pickBtn').disabled = true; }
+
+function classify(name, inMedia){
+  if (inMedia || MEDIA_EXT.test(name)) return 'media';
+  if (SAVE_EXT.test(name) || /\.state/i.test(name)) return 'save';
+  return 'rom';
+}
+
+async function walk(dir, rel, inMedia, out, depth, onCount){
+  for await (const [name, h] of dir.entries()){
+    if (JUNK(name)) continue;
+    if (h.kind === 'directory'){
+      if (depth < 6) await walk(h, rel ? rel+'/'+name : name, inMedia || MEDIA_DIR.test(name), out, depth+1, onCount);
+    } else {
+      let size = 0; try { size = (await h.getFile()).size; } catch(e){}
+      out.push({ name, rel, size, handle:h, dir, kind: classify(name, inMedia) });
+      if (onCount && out.length % 50 === 0) onCount();
+    }
+  }
+}
+
+function makeSystem(name, handle, files){
+  const roms = files.filter(f => f.kind === 'rom');
+  const extras = files.length - roms.length;
+  const allMedia = files.length > 0 && files.every(f => f.kind === 'media');
+  const status = roms.length ? 'has' : files.length ? 'img' : 'empty';
+  const key = name.toLowerCase().replace(/\s+/g,'');
+  return { name, handle, files, roms, extras, allMedia, status, size: files.reduce((a,f)=>a+f.size,0),
+    sel:false, exp:false, ren:true, destName: ALIAS[key] || name.toLowerCase() };
+}
+
+// ---------- Pick and scan ----------
+$('#pickBtn').addEventListener('click', async () => {
+  let h;
+  try { h = await window.showDirectoryPicker({ id:'romsweep-src', mode:'readwrite' }); }
+  catch(e){ if (e.name !== 'AbortError') toast(e.message); return; }
+  state.root = h; state.scanRoot = h; state.usingSub = false;
+  for await (const [n, c] of h.entries()){
+    if (c.kind === 'directory' && /^roms$/i.test(n)){ state.scanRoot = c; state.usingSub = true; break; }
+  }
+  state.dest = null; state.savesRoot = null; state.savesFiles = []; state.lastLog = null;
+  renderDupMasterNote();
+  $('#savesNote').textContent = "Saves stored outside this folder won't be renamed unless you add their folder.";
+  await scan();
+});
+$('#rescanBtn').addEventListener('click', () => scan(true));
+
+async function scan(keepSel){
+  if (!state.scanRoot) return;
+  const prev = keepSel ? new Map(state.systems.map(s => [s.name, s])) : new Map();
+  $('#startState').classList.add('hidden'); $('#scanned').classList.remove('hidden');
+  $('#list').innerHTML = '<div class="empty-state">Scanning…</div>';
+  const systems = []; let loose = 0; let counted = 0;
+  const onCount = () => { counted += 50; $('#list').innerHTML = `<div class="empty-state">Scanning… ${counted} files read</div>`; };
+  try {
+    for await (const [n, h] of state.scanRoot.entries()){
+      if (JUNK(n)) continue;
+      if (h.kind !== 'directory'){ loose++; continue; }
+      const files = [];
+      await walk(h, '', MEDIA_DIR.test(n), files, 0, onCount);
+      const s = makeSystem(n, h, files);
+      const p = prev.get(n); if (p){ s.sel = p.sel; s.exp = p.exp; s.ren = p.ren; s.destName = p.destName; }
+      systems.push(s);
+    }
+  } catch(e){ $('#list').innerHTML = `<div class="empty-state">Couldn't read this folder: ${esc(e.message)}</div>`; return; }
+  systems.sort((a,b) => a.name.localeCompare(b.name, undefined, {sensitivity:'base', numeric:true}));
+  state.systems = systems;
+  if (state.dups){ state.dups = null; if (typeof renderDups === 'function') renderDups(); }
+  $('#srcPath').textContent = state.usingSub ? `${state.root.name} / ${state.scanRoot.name}` : state.scanRoot.name;
+  let note = state.usingSub ? `Found a <code>${esc(state.scanRoot.name)}</code> folder inside, so that's what's scanned. <button id="useTop">Scan ${esc(state.root.name)} instead</button>` : '';
+  if (loose) note += `${note?' ':''}${loose} loose file${loose>1?'s':''} at the top level ${loose>1?'are':'is'} not inside a system folder and ${loose>1?'were':'was'} ignored.`;
+  $('#srcNote').innerHTML = note;
+  const ut = $('#useTop'); if (ut) ut.addEventListener('click', () => { state.scanRoot = state.root; state.usingSub = false; scan(); });
+  renderAll();
+}
+
+// ---------- List ----------
+function renderAll(){ renderStats(); renderList(); renderBar(); buildPlan(); renderRename(); if (!$('#copyPanel').classList.contains('hidden')) renderCopy(); }
+
+function renderStats(){
+  const S = state.systems;
+  $('#stTotal').textContent = S.length;
+  $('#stHas').textContent = S.filter(s=>s.status==='has').length;
+  $('#stEmpty').textContent = S.filter(s=>s.status==='empty').length;
+  $('#stImg').textContent = S.filter(s=>s.status==='img').length;
+}
+
+function statusPill(s){
+  if (s.status === 'has') return '<span class="pill has">Has ROMs</span>';
+  if (s.status === 'empty') return '<span class="pill empty">Empty</span>';
+  return `<span class="pill img">${s.allMedia ? 'Images only' : 'Extras only'}</span>`;
+}
+
+function renderList(){
+  const vis = state.systems.map((s,i)=>[s,i]).filter(([s]) => state.filter==='all' || s.status===state.filter);
+  if (!state.systems.length){ $('#list').innerHTML = '<div class="empty-state">No system folders here. Try the folder that holds your platform folders.</div>'; return; }
+  const allSel = vis.length && vis.every(([s])=>s.sel);
+  let h = `<div class="row head"><input type="checkbox" id="selAll" ${allSel?'checked':''} aria-label="Select all shown"><span>Folder</span><span>Status</span><span class="num">ROMs</span><span class="num">Size</span></div>`;
+  if (!vis.length) h += '<div class="empty-state">No folders match this filter.</div>';
+  for (const [s,i] of vis){
+    h += `<div class="row" data-i="${i}"><input type="checkbox" data-act="sel" ${s.sel?'checked':''} aria-label="Select ${esc(s.name)}">
+      <button class="nm" data-act="exp" aria-expanded="${s.exp}" title="${esc(s.name)}">${s.exp?'▾':'▸'} ${esc(s.name)}</button>
+      ${statusPill(s)}<span class="num">${s.roms.length}${s.extras?` <span class="kind">+${s.extras}</span>`:''}</span><span class="num">${fmt(s.size)}</span></div>`;
+    if (s.exp){
+      const files = [...s.roms, ...s.files.filter(f=>f.kind!=='rom')];
+      h += '<div class="files">';
+      if (!files.length) h += '<div><span>This folder is empty.</span></div>';
+      files.slice(0,300).forEach(f => { h += `<div><span>${esc(f.rel?f.rel+'/':'')}${esc(f.name)}${f.kind!=='rom'?`<span class="kind">${f.kind}</span>`:''}</span><span>${fmt(f.size)}</span></div>`; });
+      if (files.length > 300) h += `<div><span>and ${files.length-300} more</span></div>`;
+      h += '</div>';
+    }
+  }
+  $('#list').innerHTML = h;
+  const sa = $('#selAll'); if (sa) sa.addEventListener('change', e => { vis.forEach(([s])=>s.sel=e.target.checked); renderList(); renderBar(); });
+}
+
+$('#list').addEventListener('click', e => {
+  const row = e.target.closest('.row[data-i]'); if (!row) return;
+  const s = state.systems[+row.dataset.i]; const act = e.target.closest('[data-act]')?.dataset.act;
+  if (act === 'sel'){ s.sel = e.target.checked; renderBar(); if (!$('#copyPanel').classList.contains('hidden')) renderCopy(); }
+  if (act === 'exp'){ s.exp = !s.exp; renderList(); }
+});
+$('#filters').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  state.filter = b.dataset.f; document.querySelectorAll('#filters button').forEach(x=>x.classList.toggle('on', x===b)); renderList();
+});
+function renderBar(){ const n = state.systems.filter(s=>s.sel).length; $('#selCount').textContent = `${n} folder${n===1?'':'s'} selected`; }
+
+// ---------- Export list ----------
+function download(name, text, type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([text],{type})); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href); a.remove();},500); }
+const stamp = () => new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+$('#exportBtn').addEventListener('click', () => {
+  const q = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines = ['system,status,roms,extras,folder_size_bytes,file,kind,file_size_bytes'];
+  for (const s of state.systems){
+    const st = s.status==='has'?'has roms':s.status==='empty'?'empty':(s.allMedia?'images only':'extras only');
+    if (!s.files.length) lines.push([q(s.name),st,0,0,0,'','',''].join(','));
+    for (const f of s.files) lines.push([q(s.name),st,s.roms.length,s.extras,s.size,q((f.rel?f.rel+'/':'')+f.name),f.kind,f.size].join(','));
+  }
+  download(`rom-list-${state.scanRoot.name}-${stamp()}.csv`, lines.join('\n'), 'text/csv'); toast('List exported');
+});
+
+// ---------- Delete ----------
+$('#deleteBtn').addEventListener('click', async () => {
+  if (state.busy) return;
+  const sel = state.systems.filter(s=>s.sel); const del = sel.filter(s=>s.status!=='has'); const kept = sel.length - del.length;
+  if (!sel.length){ toast('Select the folders to delete first'); return; }
+  if (!del.length){ toast("Delete only works on empty and images or extras only folders. Folders with ROMs are protected."); return; }
+  const msg = `Delete ${del.length} folder${del.length>1?'s':''} from ${state.scanRoot.name}?\n\n${del.map(s=>s.name+(s.files.length?` (${s.files.length} extra files)`:'')).join('\n')}${kept?`\n\n${kept} selected folder${kept>1?'s':''} with ROMs will be left alone.`:''}\n\nThis can't be undone.`;
+  if (!confirm(msg)) return;
+  state.busy = true; const fails = [];
+  for (const s of del){ try { await state.scanRoot.removeEntry(s.name, {recursive:true}); } catch(e){ fails.push(`${s.name}: ${e.message}`); } }
+  state.busy = false;
+  toast(fails.length ? `Deleted ${del.length-fails.length}, ${fails.length} failed` : `Deleted ${del.length} folder${del.length>1?'s':''}`);
+  if (fails.length) alert(fails.join('\n'));
+  await scan(true);
+});
+
+// ---------- Copy ----------
+$('#openCopyBtn').addEventListener('click', () => {
+  if (!state.systems.some(s=>s.sel && s.files.length)){ toast('Select folders with files to copy first'); return; }
+  $('#copyPanel').classList.remove('hidden');
+  $('#optCleanCopy').checked = state.scope !== 'card';
+  renderCopy(); $('#copyPanel').scrollIntoView({behavior:'smooth', block:'start'});
+});
+$('#destBtn').addEventListener('click', async () => {
+  try { state.dest = await window.showDirectoryPicker({ id:'romsweep-dest', mode:'readwrite' }); }
+  catch(e){ if (e.name !== 'AbortError') toast(e.message); return; }
+  if (state.scanRoot && await state.dest.isSameEntry(state.scanRoot)){ state.dest = null; toast("The destination can't be the folder you're copying from"); }
+  renderCopy(); renderDupMasterNote();
+});
+
+async function renderCopy(){
+  const sel = state.systems.filter(s=>s.sel && s.files.length);
+  $('#destName').innerHTML = state.dest ? `Copying into <code>${esc(state.dest.name)}</code>` : 'No destination chosen yet. Pick your master <code>roms</code> folder.';
+  let h = '<div class="map head"><span>From</span><span></span><span>Into master as</span><span style="text-align:right">Status</span></div>';
+  for (const s of sel){
+    const i = state.systems.indexOf(s);
+    h += `<div class="map"><span>${esc(s.name)} <span class="kind">${s.roms.length} ROMs</span></span><span aria-hidden="true">→</span>
+      <input type="text" data-i="${i}" value="${esc(s.destName)}" aria-label="Destination folder for ${esc(s.name)}"><span class="num" data-st="${i}">${state.dest?'…':''}</span></div>`;
+  }
+  if (!sel.length) h += '<p class="note">Select folders in the list above.</p>';
+  $('#mapRows').innerHTML = h;
+  document.querySelectorAll('#mapRows input').forEach(inp => inp.addEventListener('input', e => {
+    state.systems[+e.target.dataset.i].destName = e.target.value.trim(); updateDestStatus();
+  }));
+  updateDestStatus();
+}
+async function updateDestStatus(){
+  if (!state.dest) return;
+  for (const el of document.querySelectorAll('#mapRows [data-st]')){
+    const s = state.systems[+el.dataset.st]; let st = 'New';
+    if (!s.destName || /[\\/:*?"<>|]/.test(s.destName)) st = 'Invalid name';
+    else { try { await state.dest.getDirectoryHandle(s.destName); st = 'Merging'; } catch(e){} }
+    el.textContent = st;
+  }
+}
+
+async function copyStream(fileHandle, targetDir, outName){
+  const src = await fileHandle.getFile();
+  const nh = await targetDir.getFileHandle(outName, {create:true});
+  const w = await nh.createWritable();
+  await src.stream().pipeTo(w);
+}
+async function dirAt(base, parts, create){ let d = base; for (const p of parts){ if (p) d = await d.getDirectoryHandle(p, {create}); } return d; }
+
+$('#copyBtn').addEventListener('click', async () => {
+  if (state.busy) return;
+  if (!state.dest){ toast('Choose a destination first'); return; }
+  const sel = state.systems.filter(s=>s.sel && s.files.length);
+  if (!sel.length){ toast('Select folders to copy'); return; }
+  const bad = sel.find(s => !s.destName || /[\\/:*?"<>|]/.test(s.destName));
+  if (bad){ toast(`Fix the destination name for ${bad.name}`); return; }
+  const includeMedia = $('#optMedia').checked, skip = $('#optSkip').checked, clean = $('#optCleanCopy').checked;
+  const renameMap = new Map();
+  if (clean) for (const p of state.plan) if (p.on && p.sys.ren){ renameMap.set(p.file, p.newName); for (const c of p.comps) if (c.root==='card') renameMap.set(c.file, c.newName); }
+  const jobs = [];
+  for (const s of sel) for (const f of s.files){ if (f.kind==='rom' || (includeMedia && f.kind==='media')) jobs.push({s, f}); }
+  const total = jobs.reduce((a,j)=>a+j.f.size,0);
+  state.busy = true; $('#copyBtn').disabled = true; $('#copyErr').textContent = '';
+  $('#copyProg').classList.remove('hidden'); $('#copyText').classList.remove('hidden');
+  let done = 0, copied = 0, skipped = 0, bytes = 0; const conflicts = [], errors = [];
+  const upd = () => { $('#copyProg div').style.width = (total? bytes/total*100 : 100)+'%';
+    const [a,b] = $('#copyText').children; a.textContent = `Copied ${copied} of ${jobs.length} files${skipped?`, ${skipped} skipped`:''}${conflicts.length?`, ${conflicts.length} conflicts`:''}`; b.textContent = `${fmt(bytes)} of ${fmt(total)}`; };
+  upd();
+  for (const {s, f} of jobs){
+    const outName = renameMap.get(f) || f.name;
+    try {
+      const td = await dirAt(state.dest, [s.destName, ...(f.rel ? f.rel.split('/') : [])], true);
+      let exists = null; try { exists = await (await td.getFileHandle(outName)).getFile(); } catch(e){}
+      if (exists){
+        if (exists.size !== f.size){ conflicts.push(`${s.destName}/${f.rel?f.rel+'/':''}${outName} (different size, not overwritten)`); bytes += f.size; done++; upd(); continue; }
+        if (skip){ skipped++; bytes += f.size; done++; upd(); continue; }
+      }
+      await copyStream(f.handle, td, outName); copied++;
+    } catch(e){ errors.push(`${s.name}/${f.rel?f.rel+'/':''}${f.name}: ${e.message}`); }
+    bytes += f.size; done++; upd();
+  }
+  state.busy = false; $('#copyBtn').disabled = false;
+  const lines = [...conflicts.map(c=>'Conflict: '+c), ...errors.map(e=>'Error: '+e)];
+  $('#copyErr').textContent = lines.slice(0,40).join('\n') + (lines.length>40?`\n…and ${lines.length-40} more`:'');
+  toast(`Copy finished: ${copied} copied, ${skipped} skipped${conflicts.length?`, ${conflicts.length} conflicts`:''}${errors.length?`, ${errors.length} errors`:''}`);
+  updateDestStatus();
+});
+
+// ---------- Rename ----------
+function splitExt(name){ const i = name.lastIndexOf('.'); return i > 0 ? [name.slice(0,i), name.slice(i)] : [name, '']; }
+// Number-prefix styles. "space" (001 Name) is only stripped when it's the folder's
+// numbering pattern, so titles like "1942" or "10-Pin Bowling" stay intact.
+const LEAD_STYLES = [
+  ['bracket', /^\s*[(\[](\d{1,5})[)\]]\s*(?:[-–_.]\s*)?/],
+  ['dash',    /^\s*(\d{1,5})(?:\s*[-–]\s+|\s+[-–]\s*)/],
+  ['dot',     /^\s*(\d{1,5})\.\s+/],
+  ['under',   /^\s*(\d{1,5})_+/],
+  ['space',   /^\s*(\d{2,5})\s+(?=\S)/],
+];
+function leadInfo(b){
+  for (const [style, re] of LEAD_STYLES){ const m = b.match(re); if (m) return { style, width:m[1].length, key:style+':'+m[1].length, rest:b.slice(m[0].length) }; }
+  return null;
+}
+// dom = the folder's dominant numbering style (e.g. "space:3"), or null
+function stripLead(b, dom){
+  const li = leadInfo(b);
+  if (!li) return { rest:b, flag:'' };
+  if (dom){
+    if (li.key === dom) return { rest:li.rest, flag:'' };
+    if (li.style === 'space') return { rest:b, flag:'' };
+    return { rest:li.rest, flag:'style' };
+  }
+  if (li.style === 'space') return /^\s*0/.test(b) ? { rest:li.rest, flag:'style' } : { rest:b, flag:'' };
+  return { rest:li.rest, flag:'' };
+}
+function folderNumbering(files){
+  const counts = new Map();
+  for (const f of files){ if (f.rel) continue; const li = leadInfo(splitExt(f.name)[0]); if (li) counts.set(li.key, (counts.get(li.key)||0) + 1); }
+  let dom = null, best = 0; for (const [k, c] of counts) if (c > best){ best = c; dom = k; }
+  return best >= 3 ? dom : null;
+}
+function cleanBase(b, o, dom){
+  let x = b;
+  if (o.lead) x = stripLead(x, dom).rest;
+  if (o.hash) x = x.replace(/^\s*#\d{1,5}\s*(?:[-–.]\s*)?/, '');
+  if (o.under) x = x.replace(/_+/g, ' ');
+  if (o.tags) x = x.replace(/\s*[(\[]([^)\]]*)[)\]]/g, (m, inner) => /\b(disc|disk|cd|side)\s*\w/i.test(inner) ? m : '');
+  return x.replace(/\s{2,}/g, ' ').trim();
+}
+
+function buildPlan(){
+  const o = state.opts; const plan = [];
+  // index for companion lookup: every dot-prefix of a file name
+  const indexOf = files => { const m = new Map(); for (const f of files){ let i = f.name.indexOf('.'); while (i > 0){ const k = f.name.slice(0,i); (m.get(k) || m.set(k, []).get(k)).push(f); i = f.name.indexOf('.', i+1); } } return m; };
+  const savesIdx = indexOf(state.savesFiles);
+  for (const s of state.systems){
+    s.renCount = 0; s.renSkipped = 0; s.numbering = null;
+    if (s.status !== 'has' || s.name.startsWith('_')) continue;
+    const sysIdx = indexOf(s.files.filter(f => f.kind !== 'rom'));
+    const dom = folderNumbering(s.roms); s.numbering = dom;
+    const existing = new Set(s.files.filter(f=>!f.rel).map(f=>f.name.toLowerCase()));
+    const planned = new Set();
+    for (const f of s.roms){
+      if (f.rel || DISC_SET.test(f.name)){ s.renSkipped++; continue; }
+      const [base, ext] = splitExt(f.name);
+      const nb = cleanBase(base, o, dom);
+      const leadFlag = o.lead ? stripLead(base, dom).flag : '';
+      const newName = nb + ext;
+      if (newName === f.name) continue;
+      const item = { sys:s, file:f, newName, on:true, note:'', level:'', comps:[] };
+      const low = newName.toLowerCase();
+      if (!nb || /^[(\[]/.test(nb)){ item.on = false; item.level = 'w'; item.note = 'The title would be empty or start with a tag. Left unchecked.'; }
+      else if (leadFlag === 'style'){ item.on = false; item.level = 'w'; item.note = dom ? "Doesn't match this folder's numbering, so the number may be part of the title. Left unchecked." : 'Number may be part of the title. Left unchecked.'; }
+      else if ((existing.has(low) && low !== f.name.toLowerCase()) || planned.has(low)){ item.on = false; item.level = 'b'; item.note = 'A file with this name already exists. Skipped.'; }
+      planned.add(low);
+      const seen = new Set();
+      for (const [idx, root] of [[sysIdx,'card'],[savesIdx,'saves']]){
+        for (const c of (idx.get(base) || [])){ if (seen.has(c)) continue; seen.add(c); item.comps.push({ file:c, root, newName: nb + c.name.slice(base.length) }); }
+      }
+      if (item.comps.length && !item.note){
+        const nS = item.comps.filter(c=>c.file.kind==='save' || c.root==='saves').length, nM = item.comps.length - nS;
+        item.note = 'Also renames: ' + [nS?`${nS} save${nS>1?'s':''}`:'', nM?`${nM} image or extra${nM>1?'s':''}`:''].filter(Boolean).join(', ');
+      }
+      s.renCount++; plan.push(item);
+    }
+    if (state.planInit !== true && s.renCount === 0) s.ren = false;
+  }
+  state.plan = plan;
+}
+
+function renderRename(){
+  const S = state.systems.filter(s => s.status === 'has' && !s.name.startsWith('_'));
+  let fh = '';
+  for (const s of S){
+    const i = state.systems.indexOf(s);
+    const label = s.renCount ? `${s.renCount} of ${s.roms.length} files` : 'Already clean';
+    fh += `<div class="frow"><input type="checkbox" data-ren="${i}" ${s.ren && s.renCount?'checked':''} ${s.renCount?'':'disabled'} aria-label="Include ${esc(s.name)}"><span${s.renCount?'':' style="color:var(--muted)"'}>${esc(s.name)}${s.numbering?` <span class="kind">numbered like ${s.numbering.startsWith('space')?'"'+'0'.repeat(+s.numbering.split(':')[1]-1)+'1 Name"':'a list'}</span>`:''}${s.renSkipped?` <span class="kind">${s.renSkipped} disc or multi-file skipped</span>`:''}</span><span class="num">${label}</span></div>`;
+  }
+  $('#renFolders').innerHTML = fh || '<p class="note">No folders with ROMs found.</p>';
+  document.querySelectorAll('#renFolders [data-ren]').forEach(c => c.addEventListener('change', e => { state.systems[+e.target.dataset.ren].ren = e.target.checked; renderPreview(); }));
+  renderPreview(); renderScope();
+}
+
+function activeItems(){ return state.plan.filter(p => p.sys.ren); }
+function renderPreview(){
+  const items = activeItems();
+  const on = items.filter(p=>p.on).length;
+  $('#renSummary').textContent = state.plan.length ? `${on} file${on===1?'':'s'} will be renamed` : '';
+  if (!items.length){ $('#renList').innerHTML = `<p class="note" style="padding:10px 0">${state.plan.length ? 'Pick at least one folder above.' : 'Nothing to clean up with these settings.'}</p>`; renderScope(); return; }
+  let h = '';
+  items.slice(0,500).forEach((p) => {
+    const k = state.plan.indexOf(p);
+    h += `<div class="rn"><input type="checkbox" data-k="${k}" ${p.on?'checked':''} aria-label="Rename ${esc(p.file.name)}"><span class="old">${esc(p.sys.name)}/${esc(p.file.name)}</span><span aria-hidden="true">→</span><span class="new">${esc(p.newName)}</span>${p.note?`<span class="meta ${p.level}">${esc(p.note)}</span>`:''}</div>`;
+  });
+  if (items.length > 500) h += `<p class="note">Showing 500 of ${items.length}. All checked items are included.</p>`;
+  $('#renList').innerHTML = h;
+  renderScope();
+}
+$('#renList').addEventListener('change', e => { const k = e.target.dataset.k; if (k === undefined) return; state.plan[+k].on = e.target.checked; const on = activeItems().filter(p=>p.on).length; $('#renSummary').textContent = `${on} file${on===1?'':'s'} will be renamed`; renderScope(); });
+document.querySelectorAll('[data-o]').forEach(c => c.addEventListener('change', e => { state.opts[e.target.dataset.o] = e.target.checked; state.planInit = true; buildPlan(); renderRename(); }));
+
+$('#scopes').addEventListener('click', e => {
+  const b = e.target.closest('.scope'); if (!b) return;
+  state.scope = b.dataset.s; document.querySelectorAll('.scope').forEach(x=>x.classList.toggle('on', x===b));
+  $('#optCleanCopy').checked = state.scope !== 'card'; renderScope();
+});
+function renderScope(){
+  const n = activeItems().filter(p=>p.on).length; const src = state.scanRoot ? state.scanRoot.name : 'the source';
+  const t = { card:[`${n} files in ${src} will be renamed now, along with matching saves and images. A rename log downloads automatically so you can undo.`, 'Rename now'],
+    master:[`${n} files will get clean names as they're copied into your master folder. ${src} stays untouched, so saves and box art on the device keep working.`, 'Set up copy'],
+    both:[`${n} files in ${src} will be renamed now, with their saves and images. Copies to the master folder will then carry the clean names.`, 'Rename now, then copy'] }[state.scope];
+  $('#scopeNote').textContent = t[0]; $('#renameBtn').textContent = t[1];
+}
+
+$('#savesBtn').addEventListener('click', async () => {
+  let h; try { h = await window.showDirectoryPicker({ id:'romsweep-saves', mode:'readwrite' }); } catch(e){ if (e.name!=='AbortError') toast(e.message); return; }
+  const files = []; await walk(h, '', false, files, 0);
+  state.savesRoot = h; state.savesFiles = files.map(f => ({...f, kind:'save'}));
+  $('#savesNote').textContent = `Saves folder added: ${h.name} (${files.length} files). Matching saves there will be renamed with their ROMs.`;
+  state.planInit = true; buildPlan(); renderRename();
+});
+
+async function renameHandle(dir, fh, oldName, newName){
+  if (typeof fh.move === 'function'){ try { await fh.move(newName); return; } catch(e){ /* fall back below */ } }
+  await copyStream(fh, dir, newName);
+  await dir.removeEntry(oldName);
+}
+function logPath(c){ return c.root === 'saves' ? (c.file.rel ? c.file.rel.split('/') : []) : [c.sys.name, ...(c.file.rel ? c.file.rel.split('/') : [])]; }
+
+$('#renameBtn').addEventListener('click', async () => {
+  if (state.busy) return;
+  const items = activeItems().filter(p=>p.on);
+  if (state.scope === 'master'){
+    if (!items.length){ toast('Nothing selected to rename'); return; }
+    $('#openCopyBtn').click(); $('#optCleanCopy').checked = true; return;
+  }
+  if (!items.length){ toast('Nothing selected to rename'); return; }
+  const comps = items.reduce((a,p)=>a+p.comps.length,0);
+  if (!confirm(`Rename ${items.length} ROM${items.length>1?'s':''}${comps?` and ${comps} matching save or image file${comps>1?'s':''}`:''} in ${state.scanRoot.name}?\n\nA rename log will download so you can restore the old names.`)) return;
+  state.busy = true; $('#renameBtn').disabled = true; $('#renErr').textContent = '';
+  const log = { tool:'ROM Sweep', created:new Date().toISOString(), source:state.scanRoot.name, saves: state.savesRoot ? state.savesRoot.name : null, entries:[] };
+  const errors = [];
+  for (const p of items){
+    for (const c of p.comps){
+      try { await renameHandle(c.file.dir, c.file.handle, c.file.name, c.newName); log.entries.push({ root:c.root, path: logPath({root:c.root, sys:p.sys, file:c.file}), from:c.file.name, to:c.newName }); }
+      catch(e){ errors.push(`${c.file.name}: ${e.message}`); }
+    }
+    try { await renameHandle(p.file.dir, p.file.handle, p.file.name, p.newName); log.entries.push({ root:'card', path:[p.sys.name], from:p.file.name, to:p.newName }); }
+    catch(e){ errors.push(`${p.file.name}: ${e.message}`); }
+  }
+  state.lastLog = log; $('#logBtn').disabled = false;
+  if (log.entries.length) download(`rename-log-${state.scanRoot.name}-${stamp()}.json`, JSON.stringify(log, null, 2), 'application/json');
+  state.busy = false; $('#renameBtn').disabled = false;
+  $('#renErr').textContent = errors.slice(0,40).join('\n');
+  toast(`Renamed ${log.entries.length} files${errors.length?`, ${errors.length} failed`:''}`);
+  if (state.savesRoot){ const files=[]; await walk(state.savesRoot,'',false,files,0); state.savesFiles = files.map(f=>({...f,kind:'save'})); }
+  await scan(true);
+  if (state.scope === 'both'){ $('#openCopyBtn').click(); }
+});
+
+$('#logBtn').addEventListener('click', () => { if (state.lastLog) download(`rename-log-${state.lastLog.source}-${stamp()}.json`, JSON.stringify(state.lastLog, null, 2), 'application/json'); });
+$('#restoreBtn').addEventListener('click', () => { if (!state.scanRoot){ toast('Choose the folder first'); return; } $('#logFile').value=''; $('#logFile').click(); });
+$('#logFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  let log; try { log = JSON.parse(await file.text()); } catch(err){ toast("That file isn't a rename log"); return; }
+  if (!log || !Array.isArray(log.entries)){ toast("That file isn't a rename log"); return; }
+  if (log.source && log.source !== state.scanRoot.name && !confirm(`This log was made for "${log.source}", but the current folder is "${state.scanRoot.name}". Restore anyway?`)) return;
+  if (log.entries.some(x=>x.root==='saves') && !state.savesRoot){ toast(`This log includes saves. Add the saves folder (${log.saves||'used before'}) first.`); return; }
+  if (!confirm(`Restore ${log.entries.length} original file names?`)) return;
+  state.busy = true; const errors = []; let ok = 0;
+  for (const x of [...log.entries].reverse()){
+    try { const base = x.root === 'saves' ? state.savesRoot : state.scanRoot; const dir = await dirAt(base, x.path, false); const fh = await dir.getFileHandle(x.to); await renameHandle(dir, fh, x.to, x.from); ok++; }
+    catch(err){ errors.push(`${x.to}: ${err.message}`); }
+  }
+  state.busy = false; $('#renErr').textContent = errors.slice(0,40).join('\n');
+  toast(`Restored ${ok} names${errors.length?`, ${errors.length} failed`:''}`);
+  if (state.savesRoot){ const files=[]; await walk(state.savesRoot,'',false,files,0); state.savesFiles = files.map(f=>({...f,kind:'save'})); }
+  await scan(true);
+});
+
+// ---------- Duplicates ----------
+const REGION_TOK = {u:'usa',usa:'usa',us:'usa',e:'europe',eu:'europe',eur:'europe',europe:'europe',j:'japan',jp:'japan',jpn:'japan',japan:'japan',
+  w:'world',world:'world',s:'spain',es:'spain',spa:'spain',spain:'spain',f:'france',fr:'france',france:'france',g:'germany',de:'germany',ger:'germany',germany:'germany'};
+function regionsOf(name){ const out = new Set(); for (const m of name.matchAll(/[(\[]([^)\]]*)[)\]]/g)) for (const t of m[1].toLowerCase().split(/[,\s+]+/)) if (REGION_TOK[t]) out.add(REGION_TOK[t]); return out; }
+function titleKey(name){
+  let [b] = splitExt(name);
+  b = cleanBase(b, {lead:true, hash:true, under:true, tags:false});
+  b = b.replace(/\s*[(\[]([^)\]]*)[)\]]/g, (m, inner) => /\b(disc|disk|cd|side)\s*\w/i.test(inner) ? ' '+inner : '');
+  return b.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+function displayTitle(name){ const [b] = splitExt(name); return cleanBase(b, {lead:true, hash:true, under:true, tags:true}) || name; }
+const sysKey = n => { const k = n.toLowerCase().replace(/\s+/g,''); return ALIAS[k] || k; };
+function prefixIndex(files){ const m = new Map(); for (const f of files){ let i = f.name.indexOf('.'); while (i > 0){ const k = f.name.slice(0,i); (m.get(k) || m.set(k, []).get(k)).push(f); i = f.name.indexOf('.', i+1); } } return m; }
+const FULL_LIMIT = 256*1024*1024, PART = 4*1024*1024;
+async function hashFile(f){
+  const file = await f.handle.getFile(); let buf, partial = false;
+  if (file.size <= FULL_LIMIT) buf = await file.arrayBuffer();
+  else {
+    partial = true;
+    const a = new Uint8Array(await file.slice(0, PART).arrayBuffer());
+    const b = new Uint8Array(await file.slice(file.size - PART).arrayBuffer());
+    const s = new TextEncoder().encode(String(file.size));
+    buf = new Uint8Array(a.length + b.length + s.length); buf.set(a); buf.set(b, a.length); buf.set(s, a.length + b.length);
+  }
+  const d = await crypto.subtle.digest('SHA-1', buf);
+  return { hash: [...new Uint8Array(d)].map(x => x.toString(16).padStart(2,'0')).join(''), partial };
+}
+state.dups = null;
+
+function dupScopeMaster(){ return document.querySelector('input[name=dupScope]:checked').value === 'master'; }
+function renderDupMasterNote(){
+  $('#dupMasterNote').innerHTML = state.dest
+    ? `Master folder: <code>${esc(state.dest.name)}</code>. Read-only here: files are only ever removed from the scanned folder.`
+    : 'Master comparison is read-only. Files are only ever removed from the scanned folder.';
+}
+$('#dupMasterBtn').addEventListener('click', async () => {
+  let h; try { h = await window.showDirectoryPicker({ id:'romsweep-dest', mode:'readwrite' }); } catch(e){ if (e.name !== 'AbortError') toast(e.message); return; }
+  if (state.scanRoot && await h.isSameEntry(state.scanRoot)){ toast("The master folder can't be the folder you're scanning"); return; }
+  state.dest = h; renderDupMasterNote();
+  document.querySelector('input[name=dupScope][value=master]').checked = true;
+  if (!$('#copyPanel').classList.contains('hidden')) renderCopy();
+});
+
+function keepScore(it, pref){
+  const n = it.f.name; let sc = 0;
+  if (it.master) sc += 1000;
+  if (/\[!\]/.test(n)) sc += 100;
+  const r = regionsOf(n); if (r.has(pref)) sc += 50; else if (r.has('world')) sc += 20;
+  if (!/\.(zip|7z|rar)$/i.test(n)) sc += 10;
+  if (it.save) sc += 5;
+  if (!it.f.rel) sc += 2;
+  return sc;
+}
+
+$('#dupScanBtn').addEventListener('click', async () => {
+  if (state.busy) return;
+  if (!state.scanRoot){ toast('Choose a folder first'); return; }
+  const useExact = $('#dupExact').checked, useSame = $('#dupSame').checked;
+  if (!useExact && !useSame){ toast('Pick at least one kind of match'); return; }
+  const withMaster = dupScopeMaster();
+  if (withMaster && !state.dest){ toast('Choose your master folder first'); return; }
+  state.busy = true; $('#dupScanBtn').disabled = true; $('#dupErr').textContent = ''; $('#dupList').innerHTML = ''; $('#dupBar').classList.add('hidden');
+  const prog = $('#dupProg'), txt = $('#dupText'); prog.classList.remove('hidden'); txt.classList.remove('hidden');
+  const setP = (pct, a, b) => { prog.firstElementChild.style.width = pct+'%'; txt.children[0].textContent = a; txt.children[1].textContent = b || ''; };
+  const errors = [];
+  try {
+    const items = [];
+    for (const s of state.systems){
+      if (s.name.startsWith('_')) continue;
+      const pool = prefixIndex([...s.files.filter(f => f.kind === 'save'), ...state.savesFiles]);
+      for (const f of s.roms){
+        const [base] = splitExt(f.name);
+        items.push({ f, sys:s.name, sk:sysKey(s.name), master:false, sysObj:s, save: (pool.get(base) || []).length > 0 });
+      }
+    }
+    if (withMaster){
+      setP(0, 'Reading master folder…');
+      for await (const [n, h] of state.dest.entries()){
+        if (h.kind !== 'directory' || JUNK(n) || n.startsWith('_')) continue;
+        const files = []; await walk(h, '', MEDIA_DIR.test(n), files, 0);
+        for (const f of files) if (f.kind === 'rom') items.push({ f, sys:n, sk:sysKey(n), master:true, save:false });
+      }
+    }
+    const parent = items.map((_, i) => i);
+    const find = i => { while (parent[i] !== i){ parent[i] = parent[parent[i]]; i = parent[i]; } return i; };
+    const union = (a, b) => { a = find(a); b = find(b); if (a !== b) parent[b] = a; };
+
+    if (useSame){
+      const m = new Map();
+      items.forEach((it, i) => { const t = titleKey(it.f.name); if (!t) return; const k = it.sk + '|' + t; (m.get(k) || m.set(k, []).get(k)).push(i); });
+      for (const arr of m.values()) for (let j = 1; j < arr.length; j++) union(arr[0], arr[j]);
+    }
+    if (useExact){
+      const bySize = new Map();
+      items.forEach((it, i) => { if (it.f.size > 0) (bySize.get(it.f.size) || bySize.set(it.f.size, []).get(it.f.size)).push(i); });
+      const toHash = [];
+      for (const arr of bySize.values()) if (arr.length > 1 && arr.some(i => !items[i].master)) toHash.push(...arr);
+      const total = toHash.reduce((a, i) => a + Math.min(items[i].f.size, FULL_LIMIT), 0); let done = 0, n = 0;
+      const byHash = new Map();
+      for (const i of toHash){
+        const it = items[i];
+        try { const r = await hashFile(it.f); it.hash = r.hash; it.partial = r.partial; (byHash.get(r.hash) || byHash.set(r.hash, []).get(r.hash)).push(i); }
+        catch(e){ errors.push(`${it.sys}/${it.f.name}: ${e.message}`); }
+        done += Math.min(it.f.size, FULL_LIMIT); n++;
+        setP(total ? done/total*100 : 100, `Comparing file contents: ${n} of ${toHash.length}`, `${fmt(done)} of ${fmt(total)}`);
+      }
+      for (const arr of byHash.values()) for (let j = 1; j < arr.length; j++) union(arr[0], arr[j]);
+    }
+
+    const comps = new Map();
+    items.forEach((it, i) => { const r = find(i); (comps.get(r) || comps.set(r, []).get(r)).push(it); });
+    const pref = $('#dupRegion').value; const groups = [];
+    for (const members of comps.values()){
+      if (members.length < 2 || !members.some(m => !m.master)) continue;
+      members.sort((a, b) => keepScore(b, pref) - keepScore(a, pref) || a.f.name.localeCompare(b.f.name));
+      const hashes = members.map(m => m.hash).filter(Boolean);
+      const hcount = new Map(); hashes.forEach(h => hcount.set(h, (hcount.get(h) || 0) + 1));
+      members.forEach(m => { m.same = m.hash && hcount.get(m.hash) > 1; });
+      const allSame = members.every(m => m.hash) && new Set(hashes).size === 1;
+      const anySame = members.some(m => m.same);
+      groups.push({ members, keep:0, type: allSame ? 'exact' : anySame ? 'mix' : 'same', title: displayTitle(members[0].f.name), master: members.some(m => m.master) });
+    }
+    groups.sort((a, b) => a.members[0].sys.localeCompare(b.members[0].sys) || a.title.localeCompare(b.title));
+    state.dups = groups;
+  } catch(e){ errors.push(e.message); }
+  state.busy = false; $('#dupScanBtn').disabled = false; prog.classList.add('hidden'); txt.classList.add('hidden');
+  $('#dupErr').textContent = errors.slice(0,40).join('\n');
+  renderDups();
+});
+
+function extrasOf(g){ return g.members.filter((m, i) => i !== g.keep && !m.master); }
+function renderDups(){
+  const G = state.dups;
+  if (!G){ $('#dupList').innerHTML = ''; $('#dupSummary').textContent = ''; $('#dupBar').classList.add('hidden'); return; }
+  if (!G.length){ $('#dupList').innerHTML = '<p class="note" style="padding:10px 0">No duplicates found with these settings.</p>'; $('#dupSummary').textContent = ''; $('#dupBar').classList.add('hidden'); return; }
+  let h = '';
+  const shown = G.slice(0, 400);
+  shown.forEach((g, gi) => {
+    const pill = g.type === 'exact' ? '<span class="pill empty">Exact copy</span>' : g.type === 'mix' ? '<span class="pill mix">Copies and versions</span>' : '<span class="pill img">Same game</span>';
+    h += `<div class="dg"><div class="dgh"><span style="flex:1">${esc(g.title)} <span class="kind">${esc(g.members[0].sys)}</span></span>${pill}${g.master?'<span class="kind">Already in master</span>':''}</div>`;
+    g.members.forEach((m, mi) => {
+      const keep = mi === g.keep;
+      const loc = m.master ? `master: ${m.sys}/` : `${m.sys}/`;
+      const tags = [keep ? 'keep' : (m.master ? 'stays in master' : 'extra'), m.same ? (m.partial ? 'same content (partial check)' : 'same content') : ''].filter(Boolean).join(', ');
+      h += `<label class="dgr ${keep?'':'extra'}"><input type="radio" name="dg${gi}" data-g="${gi}" data-m="${mi}" ${keep?'checked':''}>
+        <span class="fn"><span class="loc">${esc(loc)}${esc(m.f.rel?m.f.rel+'/':'')}</span>${esc(m.f.name)} <span class="kind">${tags}</span></span>
+        <span class="num">${fmt(m.f.size)}</span><span class="kind">${m.save?'Has save':''}</span></label>`;
+    });
+    h += '</div>';
+  });
+  if (G.length > 400) h += `<p class="note">Showing 400 of ${G.length} groups. Export the report to see all of them. Actions apply to every group.</p>`;
+  $('#dupList').innerHTML = h;
+  updateDupSummary();
+}
+$('#dupList').addEventListener('change', e => {
+  const g = e.target.dataset.g; if (g === undefined) return;
+  state.dups[+g].keep = +e.target.dataset.m; renderDups();
+});
+function updateDupSummary(){
+  const ex = state.dups.flatMap(extrasOf);
+  const bytes = ex.reduce((a, m) => a + m.f.size, 0);
+  $('#dupSummary').textContent = `${state.dups.length} group${state.dups.length===1?'':'s'}, ${ex.length} extra file${ex.length===1?'':'s'}, ${fmt(bytes)}`;
+  const saves = ex.filter(m => m.save).length;
+  $('#dupNote').textContent = ex.length ? (saves ? `${saves} extra file${saves>1?'s have':' has'} a save. Saves are moved to _duplicates, never deleted.` : `${ex.length} extra file${ex.length>1?'s':''} ready to clear out.`) : 'Nothing to remove: every group keeps all its source files.';
+  $('#dupBar').classList.remove('hidden');
+}
+
+$('#dupRegion').addEventListener('change', () => {
+  if (!state.dups) return; const pref = $('#dupRegion').value;
+  for (const g of state.dups){ const k = g.members[g.keep]; g.members.sort((a, b) => keepScore(b, pref) - keepScore(a, pref) || a.f.name.localeCompare(b.f.name)); g.keep = 0; void k; }
+  renderDups();
+});
+
+$('#dupExport').addEventListener('click', () => {
+  if (!state.dups) return; const q = v => `"${String(v).replace(/"/g,'""')}"`;
+  const lines = ['group,match,title,action,location,system,file,size_bytes,has_save,sha1'];
+  state.dups.forEach((g, gi) => g.members.forEach((m, mi) => lines.push([gi+1, g.type, q(g.title), mi===g.keep?'keep':(m.master?'master':'extra'), m.master?'master':'source', q(m.sys), q((m.f.rel?m.f.rel+'/':'')+m.f.name), m.f.size, m.save?'yes':'', m.hash||''].join(','))));
+  download(`duplicates-${state.scanRoot.name}-${stamp()}.csv`, lines.join('\n'), 'text/csv'); toast('Report exported');
+});
+
+function companionsFor(g, m){
+  // files named like this ROM (saves, box art) that don't also belong to a kept member with the same base name
+  const [base] = splitExt(m.f.name);
+  const keptBases = new Set(g.members.filter(x => !extrasOf(g).includes(x)).map(x => splitExt(x.f.name)[0]));
+  if (keptBases.has(base)) return [];
+  const out = [];
+  for (const f of m.sysObj.files) if (f.kind !== 'rom' && f.name.startsWith(base + '.')) out.push({ f, root:'card', sys:m.sys });
+  for (const f of state.savesFiles) if (f.name.startsWith(base + '.')) out.push({ f, root:'saves' });
+  return out;
+}
+async function uniqueName(dir, name){ const [b, e] = splitExt(name); let n = name, i = 2; for (;;){ try { await dir.getFileHandle(n); n = `${b} (${i++})${e}`; } catch(_){ return n; } } }
+async function moveFile(f, destDir){
+  const nn = await uniqueName(destDir, f.name);
+  if (typeof f.handle.move === 'function'){ try { await f.handle.move(destDir, nn); return; } catch(e){ /* fall back */ } }
+  await copyStream(f.handle, destDir, nn); await f.dir.removeEntry(f.name);
+}
+async function dupAct(mode){
+  if (state.busy || !state.dups) return;
+  const work = state.dups.flatMap(g => extrasOf(g).map(m => ({ g, m })));
+  if (!work.length){ toast('No extra files to remove'); return; }
+  const nComp = work.reduce((a, w) => a + companionsFor(w.g, w.m).length, 0);
+  const msg = mode === 'move'
+    ? `Move ${work.length} extra file${work.length>1?'s':''}${nComp?` and ${nComp} matching save or image file${nComp>1?'s':''}`:''} into ${state.scanRoot.name}/_duplicates?\n\nFolders keep their structure, so you can put anything back by hand.`
+    : `Delete ${work.length} extra file${work.length>1?'s':''} from ${state.scanRoot.name}?\n\nMatching images are deleted too. Matching saves are moved to _duplicates/_saves instead of being deleted.\n\nThis can't be undone.`;
+  if (!confirm(msg)) return;
+  state.busy = true; $('#dupErr').textContent = ''; const errors = []; let ok = 0;
+  let dupRoot;
+  try { dupRoot = await state.scanRoot.getDirectoryHandle('_duplicates', {create:true}); } catch(e){ state.busy = false; toast(`Couldn't create _duplicates: ${e.message}`); return; }
+  for (const { g, m } of work){
+    for (const c of companionsFor(g, m)){
+      try {
+        const isSave = c.root === 'saves' || c.f.kind === 'save';
+        if (mode === 'move' || isSave){
+          const parts = c.root === 'saves' ? ['_saves', ...(c.f.rel ? c.f.rel.split('/') : [])] : [c.sys, ...(c.f.rel ? c.f.rel.split('/') : [])];
+          await moveFile(c.f, await dirAt(dupRoot, parts, true));
+        } else await c.f.dir.removeEntry(c.f.name);
+      } catch(e){ errors.push(`${c.f.name}: ${e.message}`); }
+    }
+    try {
+      if (mode === 'move') await moveFile(m.f, await dirAt(dupRoot, [m.sys, ...(m.f.rel ? m.f.rel.split('/') : [])], true));
+      else await m.f.dir.removeEntry(m.f.name);
+      ok++;
+    } catch(e){ errors.push(`${m.sys}/${m.f.name}: ${e.message}`); }
+  }
+  state.busy = false; state.dups = null;
+  $('#dupErr').textContent = errors.slice(0,40).join('\n');
+  toast(`${mode === 'move' ? 'Moved' : 'Deleted'} ${ok} file${ok===1?'':'s'}${errors.length?`, ${errors.length} failed`:''}`);
+  if (state.savesRoot){ const files = []; await walk(state.savesRoot, '', false, files, 0); state.savesFiles = files.map(f => ({...f, kind:'save'})); }
+  await scan(true); renderDups();
+}
+$('#dupMove').addEventListener('click', () => dupAct('move'));
+$('#dupDelete').addEventListener('click', () => dupAct('delete'));
+})();
+</script>
+</body>
+</html>
